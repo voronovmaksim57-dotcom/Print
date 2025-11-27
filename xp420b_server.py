@@ -5,7 +5,7 @@ import subprocess
 import os
 
 # --- АВТООБНОВЛЕНИЕ ИЗ GITHUB ---
-VERSION = "2025-11-27-1"
+VERSION = "2025-11-28-1"
 
 # ссылка на raw-версию файла xp420b_server.py в GitHub
 # ⚠️ Обязательно замени USERNAME, REPO и ветку (main/master) на свои.
@@ -439,3 +439,4 @@ if __name__ == "__main__":
     # 3) если обновления не было или не удалось -- просто запускаем сервер
     print("[XP420B] Запуск Flask-сервера на 127.0.0.1:9123")
     app.run(host="127.0.0.1", port=9123)
+
