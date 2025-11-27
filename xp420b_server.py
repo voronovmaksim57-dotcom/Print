@@ -1,9 +1,20 @@
-
 from flask import Flask, request, jsonify
 from datetime import datetime
 import sys
 import subprocess
 import os
+
+# --- АВТООБНОВЛЕНИЕ ИЗ GITHUB ---
+
+# ссылка на raw-версию файла xp420b_server.py в GitHub
+# ⚠️ Обязательно замени USERNAME, REPO и ветку (main/master) на свои.
+AUTOUPDATE_URL = (
+    "https://raw.githubusercontent.com/voronovmaksim57-dotcom/Print/refs/heads/main/xp420b_server.py"
+)
+
+AUTOUPDATE_ENABLED = True   # можно выключить, если что
+AUTOUPDATE_BACKUP_SUFFIX = ".bak"
+
 
 REQUIRED_MODULES = [
     ("flask", "flask"),
@@ -24,6 +35,76 @@ def ensure_dependencies():
                 print("Продолжаем выполнение, но сервер может не работать!")
                 
 ensure_dependencies()
+
+def check_and_update_from_github():
+    """
+    Проверяет raw-файл на GitHub.
+    Если содержимое отличается от текущего -- скачивает, делает .bak и перезапускает скрипт.
+    """
+    if not AUTOUPDATE_ENABLED:
+        return
+
+    import urllib.request
+
+    script_path = os.path.abspath(__file__)
+
+    try:
+        print("[AUTOUPDATE] Проверяю обновление с GitHub...", flush=True)
+        with urllib.request.urlopen(AUTOUPDATE_URL, timeout=5) as resp:
+            if resp.status != 200:
+                print(f"[AUTOUPDATE] GitHub ответил статусом {resp.status}, пропускаю.", flush=True)
+                return
+            new_code = resp.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        print(f"[AUTOUPDATE] Не удалось скачать файл с GitHub: {e}", flush=True)
+        return
+
+    # Читаем текущий файл
+    try:
+        with open(script_path, "r", encoding="utf-8") as f:
+            current_code = f.read()
+    except Exception as e:
+        print(f"[AUTOUPDATE] Не удалось прочитать текущий файл: {e}", flush=True)
+        return
+
+    # Если код совпадает — ничего не делаем
+    if new_code.strip() == current_code.strip():
+        print("[AUTOUPDATE] Уже актуальная версия, обновление не требуется.", flush=True)
+        return
+
+    # Простая sanity-проверка, чтобы случайно не залить мусор
+    if "def build_tspl" not in new_code or "app.run" not in new_code:
+        print("[AUTOUPDATE] Загруженный файл не похож на xp420b_server.py, пропускаю.", flush=True)
+        return
+
+    # Делаем бэкап
+    backup_path = script_path + AUTOUPDATE_BACKUP_SUFFIX
+    try:
+        with open(backup_path, "w", encoding="utf-8") as f:
+            f.write(current_code)
+        print(f"[AUTOUPDATE] Резервная копия сохранена: {backup_path}", flush=True)
+    except Exception as e:
+        print(f"[AUTOUPDATE] Не удалось сохранить бэкап: {e}", flush=True)
+        # даже если бэкап не удался, не будем трогать файл
+        return
+
+    # Перезаписываем текущий файл новым кодом
+    try:
+        with open(script_path, "w", encoding="utf-8") as f:
+            f.write(new_code)
+        print("[AUTOUPDATE] Файл обновлён, запускаю новую версию и выхожу.", flush=True)
+    except Exception as e:
+        print(f"[AUTOUPDATE] Ошибка записи нового файла: {e}", flush=True)
+        return
+
+    # Стартуем новый процесс и выходим из текущего
+    try:
+        subprocess.Popen([sys.executable, script_path])
+    except Exception as e:
+        print(f"[AUTOUPDATE] Не удалось перезапустить скрипт: {e}", flush=True)
+    finally:
+        sys.exit(0)
+
 
 import win32print
 import re
@@ -60,6 +141,75 @@ app = Flask(__name__)
 LABEL_WIDTH_MM = 30
 LABEL_HEIGHT_MM = 20
 DOTS_PER_MM = 8  # 203 dpi ~ 8 точек/мм
+
+def check_and_update_from_github():
+    """
+    Проверяет raw-файл на GitHub.
+    Если содержимое отличается от текущего -- скачивает, делает .bak и перезапускает скрипт.
+    """
+    if not AUTOUPDATE_ENABLED:
+        return
+
+    import urllib.request
+
+    script_path = os.path.abspath(__file__)
+
+    try:
+        print("[AUTOUPDATE] Проверяю обновление с GitHub...", flush=True)
+        with urllib.request.urlopen(AUTOUPDATE_URL, timeout=5) as resp:
+            if resp.status != 200:
+                print(f"[AUTOUPDATE] GitHub ответил статусом {resp.status}, пропускаю.", flush=True)
+                return
+            new_code = resp.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        print(f"[AUTOUPDATE] Не удалось скачать файл с GitHub: {e}", flush=True)
+        return
+
+    # Читаем текущий файл
+    try:
+        with open(script_path, "r", encoding="utf-8") as f:
+            current_code = f.read()
+    except Exception as e:
+        print(f"[AUTOUPDATE] Не удалось прочитать текущий файл: {e}", flush=True)
+        return
+
+    # Если код совпадает — ничего не делаем
+    if new_code.strip() == current_code.strip():
+        print("[AUTOUPDATE] Уже актуальная версия, обновление не требуется.", flush=True)
+        return
+
+    # Простая sanity-проверка, чтобы случайно не залить мусор
+    if "def build_tspl" not in new_code or "app.run" not in new_code:
+        print("[AUTOUPDATE] Загруженный файл не похож на xp420b_server.py, пропускаю.", flush=True)
+        return
+
+    # Делаем бэкап
+    backup_path = script_path + AUTOUPDATE_BACKUP_SUFFIX
+    try:
+        with open(backup_path, "w", encoding="utf-8") as f:
+            f.write(current_code)
+        print(f"[AUTOUPDATE] Резервная копия сохранена: {backup_path}", flush=True)
+    except Exception as e:
+        print(f"[AUTOUPDATE] Не удалось сохранить бэкап: {e}", flush=True)
+        # даже если бэкап не удался, не будем трогать файл
+        return
+
+    # Перезаписываем текущий файл новым кодом
+    try:
+        with open(script_path, "w", encoding="utf-8") as f:
+            f.write(new_code)
+        print("[AUTOUPDATE] Файл обновлён, запускаю новую версию и выхожу.", flush=True)
+    except Exception as e:
+        print(f"[AUTOUPDATE] Ошибка записи нового файла: {e}", flush=True)
+        return
+
+    # Стартуем новый процесс и выходим из текущего
+    try:
+        subprocess.Popen([sys.executable, script_path])
+    except Exception as e:
+        print(f"[AUTOUPDATE] Не удалось перезапустить скрипт: {e}", flush=True)
+    finally:
+        sys.exit(0)
 
 
 @app.after_request
@@ -313,14 +463,14 @@ WshShell.Run """{pythonw_path}"" ""{script_path}""", 0, False
 
 
 if __name__ == "__main__":
-    # Режимы:
-    # 1) python xp420b_server.py --install-startup  -> создать .vbs в автозагрузке и выйти
-    # 2) python xp420b_server.py                    -> обычный запуск сервера
-
+    # 1) спец-режим: установка автозапуска через .vbs
     if "--install-startup" in sys.argv:
         install_startup_vbs()
         sys.exit(0)
 
+    # 2) обычный режим: сначала пытаемся обновиться с GitHub
+    check_and_update_from_github()
+
+    # 3) если обновления не было или не удалось -- просто запускаем сервер
     print("[XP420B] Запуск Flask-сервера на 127.0.0.1:9123")
     app.run(host="127.0.0.1", port=9123)
-
