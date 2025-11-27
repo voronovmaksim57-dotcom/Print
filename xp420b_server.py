@@ -5,6 +5,7 @@ import subprocess
 import os
 
 # --- АВТООБНОВЛЕНИЕ ИЗ GITHUB ---
+VERSION = "2025-11-27-1"
 
 # ссылка на raw-версию файла xp420b_server.py в GitHub
 # ⚠️ Обязательно замени USERNAME, REPO и ветку (main/master) на свои.
@@ -21,6 +22,7 @@ REQUIRED_MODULES = [
     ("win32print", "pywin32"),
 ]
 
+
 def ensure_dependencies():
     for module, package in REQUIRED_MODULES:
         try:
@@ -33,13 +35,26 @@ def ensure_dependencies():
             except Exception as e:
                 print(f"[ERROR] Не удалось установить {package}: {e}")
                 print("Продолжаем выполнение, но сервер может не работать!")
-                
+
+
 ensure_dependencies()
+
+
+def extract_version(code: str):
+    """
+    Ищет строку вида VERSION = "...." и возвращает её значение.
+    Если VERSION не найден — возвращает None.
+    """
+    import re as _re
+    m = _re.search(r'^VERSION\s*=\s*["\'](.+?)["\']', code, _re.MULTILINE)
+    return m.group(1) if m else None
+
 
 def check_and_update_from_github():
     """
     Проверяет raw-файл на GitHub.
-    Если содержимое отличается от текущего -- скачивает, делает .bak и перезапускает скрипт.
+    Если VERSION в GitHub отличается от локальной —
+    скачивает файл, делает .bak и перезапускает скрипт.
     """
     if not AUTOUPDATE_ENABLED:
         return
@@ -67,12 +82,23 @@ def check_and_update_from_github():
         print(f"[AUTOUPDATE] Не удалось прочитать текущий файл: {e}", flush=True)
         return
 
-    # Если код совпадает — ничего не делаем
-    if normalize(new_code) == normalize(current_code):
-        print("[AUTOUPDATE] Уже актуальная версия.", flush=True)
+    # Достаём версии
+    remote_version = extract_version(new_code)
+    local_version = extract_version(current_code)
+
+    print(f"[AUTOUPDATE] Local VERSION={local_version}, Remote VERSION={remote_version}", flush=True)
+
+    # Если в удалённом файле нет VERSION — лучше ничего не трогать
+    if remote_version is None:
+        print("[AUTOUPDATE] В удалённом файле нет VERSION, пропускаю.", flush=True)
         return
 
-    # Простая sanity-проверка, чтобы случайно не залить мусор
+    # Если версии совпадают — обновление не нужно
+    if remote_version == local_version:
+        print("[AUTOUPDATE] Уже актуальная версия, обновление не требуется.", flush=True)
+        return
+
+    # sanity-check, что это действительно наш файл
     if "def build_tspl" not in new_code or "app.run" not in new_code:
         print("[AUTOUPDATE] Загруженный файл не похож на xp420b_server.py, пропускаю.", flush=True)
         return
@@ -85,14 +111,13 @@ def check_and_update_from_github():
         print(f"[AUTOUPDATE] Резервная копия сохранена: {backup_path}", flush=True)
     except Exception as e:
         print(f"[AUTOUPDATE] Не удалось сохранить бэкап: {e}", flush=True)
-        # даже если бэкап не удался, не будем трогать файл
         return
 
     # Перезаписываем текущий файл новым кодом
     try:
         with open(script_path, "w", encoding="utf-8") as f:
             f.write(new_code)
-        print("[AUTOUPDATE] Файл обновлён, запускаю новую версию и выхожу.", flush=True)
+        print("[AUTOUPDATE] Файл обновлён (VERSION изменился), запускаю новую версию и выхожу.", flush=True)
     except Exception as e:
         print(f"[AUTOUPDATE] Ошибка записи нового файла: {e}", flush=True)
         return
@@ -111,7 +136,7 @@ import re
 
 # Включаем/выключаем доп. элементы
 SHOW_UNDERLINE = True   # показывать линию под числом
-SHOW_DATETIME  = True    # печатать дату и время
+SHOW_DATETIME  = True   # печатать дату и время
 
 # Насколько поднимать основное число, если печатаем дату/время
 DATETIME_SHIFT = {
@@ -158,6 +183,10 @@ def print_options():
     # Ответ на preflight-запрос
     return "", 200
 
+
+TASK_STARTUP_NAME = "xp420b_server_startup.bat"
+
+
 def install_startup():
     """
     Создаёт файл автозапуска в папке Startup текущего пользователя,
@@ -193,6 +222,7 @@ def install_startup():
         print("[XP420B] При следующем входе в Windows сервер запустится автоматически.")
     except Exception as e:
         print("[XP420B] Ошибка при создании файла автозапуска:", e)
+
 
 def build_tspl(label: str) -> str:
     font = "0"
@@ -281,9 +311,6 @@ def build_tspl(label: str) -> str:
     x = 14
     y = 40
 
-    if SHOW_DATETIME:
-        y = max(0, y - DATETIME_SHIFT_Y)
-
     print(f"TSPL(label='{label}' DEFAULT, mul={mul}, x={x}, y={y})", flush=True)
 
     lines = []
@@ -294,7 +321,7 @@ def build_tspl(label: str) -> str:
 
     # 1) текст (или любой произвольный)
     lines.append(
-        f'TEXT {x},{y},"{font}",0,{mul},{mul},"{label}"'
+        f'TEXT {x},{y},"{"0"}",0,{mul},{mul},"{label}"'
     )
 
     # 2) линия
@@ -310,15 +337,12 @@ def build_tspl(label: str) -> str:
         now_str = datetime.now().strftime("%d.%m %H:%M")
         date_y = height_dots - DATETIME_Y_FROM_BOTTOM
         lines.append(
-            f'TEXT {DATETIME_X},{date_y},"{font}",0,{DATETIME_MUL_X},{DATETIME_MUL_Y},"{now_str}"'
+            f'TEXT {DATETIME_X},{date_y},"{"0"}",0,{DATETIME_MUL_X},{DATETIME_MUL_Y},"{now_str}"'
         )
 
     lines.append("PRINT 1,1")
     return "\r\n".join(lines) + "\r\n"
 
-def normalize(code: str):
-    # Убираем различия CRLF/LF и лишние пробелы
-    return code.replace("\r\n", "\n").replace("\r", "\n").strip()
 
 def send_raw_to_printer(tspl_cmd: str):
     h = win32print.OpenPrinter(PRINTER_NAME)
@@ -330,6 +354,11 @@ def send_raw_to_printer(tspl_cmd: str):
         win32print.EndDocPrinter(h)
     finally:
         win32print.ClosePrinter(h)
+
+
+def normalize(code: str):
+    # Убираем различия CRLF/LF и лишние пробелы
+    return code.replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
 @app.post("/print")
@@ -353,10 +382,12 @@ def print_label():
 
     return jsonify({"status": "ok", "printed": label})
 
+
 TASK_NAME = "XP420B_LabelServer"
 
-
 STARTUP_VBS_NAME = "xp420b_server_startup.vbs"  # имя файла в автозагрузке
+
+
 def install_startup_vbs():
     """
     Создаёт .vbs в папке Startup текущего пользователя,
