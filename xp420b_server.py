@@ -68,8 +68,8 @@ def check_and_update_from_github():
         return
 
     # Если код совпадает — ничего не делаем
-    if new_code.strip() == current_code.strip():
-        print("[AUTOUPDATE] Уже актуальная версия, обновление не требуется.", flush=True)
+    if normalize(new_code) == normalize(current_code):
+        print("[AUTOUPDATE] Уже актуальная версия.", flush=True)
         return
 
     # Простая sanity-проверка, чтобы случайно не залить мусор
@@ -385,6 +385,9 @@ def build_tspl(label: str) -> str:
     lines.append("PRINT 1,1")
     return "\r\n".join(lines) + "\r\n"
 
+def normalize(code: str):
+    # Убираем различия CRLF/LF и лишние пробелы
+    return code.replace("\r\n", "\n").replace("\r", "\n").strip()
 
 def send_raw_to_printer(tspl_cmd: str):
     h = win32print.OpenPrinter(PRINTER_NAME)
