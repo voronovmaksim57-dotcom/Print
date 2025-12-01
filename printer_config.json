@@ -1,0 +1,58 @@
+{
+  "printer_name": "Xprinter XP-420B",
+
+  "label": {
+    "width_mm": 30,
+    "height_mm": 20,
+    "dots_per_mm": 8,
+    "gap_mm": 2
+  },
+
+  "features": {
+    "show_underline": true,
+    "show_datetime": true,
+    "print_only_left": false
+  },
+
+  "line": {
+    "thickness": 5,
+    "y_from_bottom": 35
+  },
+
+  "datetime": {
+    "mul_x": 7,
+    "mul_y": 7,
+    "y_from_bottom": 20,
+    "x": 73,
+    "shift_by_slot": {
+      "1": 20,
+      "2": 8,
+      "3": 0,
+      "4": 0
+    },
+  "single_shift": {
+    "1": 20,
+    "2": 20,
+    "3": 20
+  }
+  },
+
+  "slots": {
+    "1": { "mul": 45, "x": 34, "y": 40 },
+    "2": { "mul": 40, "x": 24, "y": 40 },
+    "3": { "mul": 34, "x": 14, "y": 43 },
+    "4": { "mul": 28, "x": 14, "y": 50 }
+  },
+
+  "single_slots": {
+    "1": { "mul": 50, "x": 30, "y": 40 },
+    "2": { "mul": 45, "x": 24, "y": 40 },
+    "3": { "mul": 40, "x": 14, "y": 40 }
+  },
+
+  "fallback": {
+    "mul": 28,
+    "x": 14,
+    "y": 40
+  }
+}
