@@ -3,9 +3,98 @@ from datetime import datetime
 import sys
 import subprocess
 import os
+import json
+from pathlib import Path
+import copy
+
+CONFIG_FILE = Path(__file__).with_name("printer_config.json")
+
+DEFAULT_CONFIG = {
+    "printer_name": "Xprinter XP-420B",
+
+    "label": {
+        "width_mm": 30,
+        "height_mm": 20,
+        "dots_per_mm": 8,
+        "gap_mm": 2,
+    },
+
+    "features": {
+        "show_underline": True,
+        "show_datetime": True,
+    },
+
+    "line": {
+        "thickness": 5,
+        "y_from_bottom": 35,
+    },
+
+    "datetime": {
+        "mul_x": 7,
+        "mul_y": 7,
+        "y_from_bottom": 20,
+        "x": 73,
+        "shift_by_slot": {
+            "1": 20,
+            "2": 8,
+            "3": 0,
+            "4": 0,
+        },
+    },
+
+    "slots": {
+        "1": {"mul": 45, "x": 34, "y": 40},
+        "2": {"mul": 40, "x": 24, "y": 40},
+          "3": {"mul": 34, "x": 14, "y": 43},
+        "4": {"mul": 28, "x": 14, "y": 50},
+    },
+
+    "fallback": {
+        "mul": 28,
+        "x": 14,
+        "y": 40,
+    },
+}
+
+
+def _deep_update(base: dict, updates: dict):
+    """Рекурсивное объединение словарей (для частичных конфигов)."""
+    for k, v in updates.items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            _deep_update(base[k], v)
+        else:
+            base[k] = v
+
+
+def load_config() -> dict:
+    cfg = copy.deepcopy(DEFAULT_CONFIG)
+
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                _deep_update(cfg, data)
+            else:
+                print("[CONFIG] printer_config.json имеет неверный формат, использую дефолтные")
+        except Exception as e:
+            print("[CONFIG] Ошибка чтения printer_config.json:", e)
+    else:
+        print("[CONFIG] Файл настроек не найден, создаю с настройками по умолчанию")
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(DEFAULT_CONFIG, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print("[CONFIG] Не удалось создать printer_config.json:", e)
+
+    return cfg
+
+
+CONFIG = load_config()
+
 
 # --- АВТООБНОВЛЕНИЕ ИЗ GITHUB ---
-VERSION = "2025-11-28-1"
+VERSION = "2025-12-01-1"
 
 # ссылка на raw-версию файла xp420b_server.py в GitHub
 # ⚠️ Обязательно замени USERNAME, REPO и ветку (main/master) на свои.
@@ -134,39 +223,34 @@ def check_and_update_from_github():
 import win32print
 import re
 
-# Включаем/выключаем доп. элементы
-SHOW_UNDERLINE = True   # показывать линию под числом
-SHOW_DATETIME  = True   # печатать дату и время
+# Все настройки берём из CONFIG
+PRINTER_NAME = CONFIG["printer_name"]
 
-# Насколько поднимать основное число, если печатаем дату/время
-DATETIME_SHIFT = {
-    "1": 20,
-    "2": 8,
-    "3": 0,
-    "4": 0
-}    # точек вверх; 0 = не двигать
+LABEL_WIDTH_MM = CONFIG["label"]["width_mm"]
+LABEL_HEIGHT_MM = CONFIG["label"]["height_mm"]
+DOTS_PER_MM = CONFIG["label"]["dots_per_mm"]
+GAP_MM = CONFIG["label"]["gap_mm"]
 
-# Параметры линии
-LINE_THICKNESS = 5       # толщина линии (было 2)
+SHOW_UNDERLINE   = CONFIG["features"]["show_underline"]
+SHOW_DATETIME    = CONFIG["features"]["show_datetime"]
+PRINT_ONLY_LEFT  = CONFIG["features"].get("print_only_left", False)
 
-# Параметры даты/времени
-DATETIME_MUL_X = 7       # масштаб по X (1..3)
-DATETIME_MUL_Y = 7       # масштаб по Y
+LINE_THICKNESS     = CONFIG["line"]["thickness"]
+LINE_Y_FROM_BOTTOM = CONFIG["line"]["y_from_bottom"]
 
-# Координаты линии и даты (относительно низа этикетки)
-LINE_Y_FROM_BOTTOM     = 35   # расстояние от нижнего края до линии
-DATETIME_Y_FROM_BOTTOM = 20   # расстояние от нижнего края до текста даты
-DATETIME_X             = 73   # смещение даты слева
+DATETIME_MUL_X        = CONFIG["datetime"]["mul_x"]
+DATETIME_MUL_Y        = CONFIG["datetime"]["mul_y"]
+DATETIME_Y_FROM_BOTTOM = CONFIG["datetime"]["y_from_bottom"]
+DATETIME_X             = CONFIG["datetime"]["x"]
+DATETIME_SHIFT         = CONFIG["datetime"]["shift_by_slot"]
+DATETIME_SINGLE_SHIFT = CONFIG["datetime"].get("single_shift", {})
 
-# ⚠️ Впиши ТОЧНОЕ имя принтера из "Устройства и принтеры"
-PRINTER_NAME = "Xprinter XP-420B"
+SLOT_CONFIG        = CONFIG["slots"]
+SINGLE_SLOT_CONFIG = CONFIG.get("single_slots", {})
+FALLBACK_CONFIG    = CONFIG["fallback"]
+
 
 app = Flask(__name__)
-
-LABEL_WIDTH_MM = 30
-LABEL_HEIGHT_MM = 20
-DOTS_PER_MM = 8  # 203 dpi ~ 8 точек/мм
-
 
 @app.after_request
 def add_cors_headers(response):
@@ -237,11 +321,7 @@ def build_tspl(label: str) -> str:
         left_len = len(left)
         right_len = len(right)
 
-        # ===== СЛОТЫ РАЗМЕТКИ =====
-        # slot1: 1 цифра слева, 1 цифра справа (например 1-1, 2-3)
-        # slot2: (1 слева, 2 справа) ИЛИ (2 слева, 1 справа) — сюда пойдёт 6-10
-        # slot3: 2 слева, 2+ справа — сюда пойдёт 44-10, 22-10 и т.п.
-        # slot4: всё остальное (3+ слева, длинные коды и т.п.)
+        # ===== СЛОТЫ РАЗМЕТКИ (как раньше) =====
         if left_len == 1 and right_len == 1:
             slot = "1"
         elif (left_len == 1 and right_len >= 2) or (left_len == 2 and right_len == 1):
@@ -251,45 +331,57 @@ def build_tspl(label: str) -> str:
         else:
             slot = "4"
 
-        # ===== БАЗОВЫЕ НАСТРОЙКИ (КАК ТЫ ЗАДАЛ РАНЕЕ) =====
-        BASE_SLOT_CONFIG = {
-            "1": {"mul": 45, "x": 34, "y": 40},
-            "2": {"mul": 40, "x": 24, "y": 40},
-            "3": {"mul": 34, "x": 14, "y": 43},
-            "4": {"mul": 28, "x": 14, "y": 50},
-        }
+        # ===== Выбираем, что печатать и какие размеры =====
+        if PRINT_ONLY_LEFT:
+            # Печатаем только левую часть (до тире)
+            text_to_print = left
+            # Берём отдельный слот по длине левой части (1 / 2 / 3 цифры)
+            single_key = str(left_len)
+            cfg = SINGLE_SLOT_CONFIG.get(
+                single_key,
+                SLOT_CONFIG.get(slot, SLOT_CONFIG["4"])  # запасной вариант — старый слот
+            )
+        else:
+            # Старое поведение — печатаем "1-1", "12-34" целиком
+            text_to_print = label
+            cfg = SLOT_CONFIG.get(slot, SLOT_CONFIG["4"])
 
-        cfg = BASE_SLOT_CONFIG.get(slot, BASE_SLOT_CONFIG["4"])
         mul = cfg["mul"]
         x = cfg["x"]
         y = cfg["y"]
 
-        # Индивидуальное поднятие для каждого слота
+        # Индивидуальное поднятие для каждого слота, если включена дата
+        # === Коррекция y (смещение вверх под дату) ===
         if SHOW_DATETIME:
-            shift = DATETIME_SHIFT.get(slot, 8)
+            if PRINT_ONLY_LEFT:
+                # отдельный shift для режима "печатаем только слева"
+                shift = DATETIME_SINGLE_SHIFT.get(str(left_len), 0)
+            else:
+                # стандартный shift по slot
+                shift = DATETIME_SHIFT.get(slot, 0)
+
             y = max(0, y - shift)
 
         print(
             f"TSPL(label='{label}', left_len={left_len}, right_len={right_len}, "
-            f"slot={slot}, mul={mul}, x={x}, y={y})",
-            flush=True
+            f"slot={slot}, mul={mul}, x={x}, y={y}, print='{text_to_print}')",
+            flush=True,
         )
 
         lines = []
         lines.append(f"SIZE {LABEL_WIDTH_MM} mm,{LABEL_HEIGHT_MM} mm")
-        lines.append("GAP 2 mm,0")
+        lines.append(f"GAP {GAP_MM} mm,0")
         lines.append("DIRECTION 1")
         lines.append("CLS")
 
-        # 1) ЧИСЛО (основной код — сверху)
+        # 1) ЧИСЛО (или "1-1", или только левая часть)
         lines.append(
-            f'TEXT {x},{y},"{font}",0,{mul},{mul},"{label}"'
+            f'TEXT {x},{y},"{font}",0,{mul},{mul},"{text_to_print}"'
         )
 
         # 2) ЛИНИЯ НИЖЕ ЧИСЛА
         if SHOW_UNDERLINE:
             line_y = height_dots - LINE_Y_FROM_BOTTOM
-            # Прямоугольник шириной на всю этикетку, высотой = LINE_THICKNESS
             lines.append(
                 f"BAR 0,{line_y},{width_dots},{LINE_THICKNESS}"
             )
@@ -306,28 +398,26 @@ def build_tspl(label: str) -> str:
         return "\r\n".join(lines) + "\r\n"
 
     # ===== Если формат не "числа-числа" — запасной вариант =====
-    # Здесь тоже уважаем старые координаты и такое же поведение смещения
-    mul = 28
-    x = 14
-    y = 40
+    mul = FALLBACK_CONFIG["mul"]
+    x = FALLBACK_CONFIG["x"]
+    y = FALLBACK_CONFIG["y"]
 
     print(f"TSPL(label='{label}' DEFAULT, mul={mul}, x={x}, y={y})", flush=True)
 
     lines = []
     lines.append(f"SIZE {LABEL_WIDTH_MM} mm,{LABEL_HEIGHT_MM} mm")
-    lines.append("GAP 2 mm,0")
+    lines.append(f"GAP {GAP_MM} mm,0")
     lines.append("DIRECTION 1")
     lines.append("CLS")
 
-    # 1) текст (или любой произвольный)
+    # 1) текст как есть
     lines.append(
-        f'TEXT {x},{y},"{"0"}",0,{mul},{mul},"{label}"'
+        f'TEXT {x},{y},"{font}",0,{mul},{mul},"{label}"'
     )
 
     # 2) линия
     if SHOW_UNDERLINE:
         line_y = height_dots - LINE_Y_FROM_BOTTOM
-        # Прямоугольник шириной на всю этикетку, высотой = LINE_THICKNESS
         lines.append(
             f"BAR 0,{line_y},{width_dots},{LINE_THICKNESS}"
         )
@@ -337,12 +427,11 @@ def build_tspl(label: str) -> str:
         now_str = datetime.now().strftime("%d.%m %H:%M")
         date_y = height_dots - DATETIME_Y_FROM_BOTTOM
         lines.append(
-            f'TEXT {DATETIME_X},{date_y},"{"0"}",0,{DATETIME_MUL_X},{DATETIME_MUL_Y},"{now_str}"'
+            f'TEXT {DATETIME_X},{date_y},"{font}",0,{DATETIME_MUL_X},{DATETIME_MUL_Y},"{now_str}"'
         )
 
     lines.append("PRINT 1,1")
     return "\r\n".join(lines) + "\r\n"
-
 
 def send_raw_to_printer(tspl_cmd: str):
     h = win32print.OpenPrinter(PRINTER_NAME)
@@ -354,7 +443,7 @@ def send_raw_to_printer(tspl_cmd: str):
         win32print.EndDocPrinter(h)
     finally:
         win32print.ClosePrinter(h)
-
+        
 
 def normalize(code: str):
     # Убираем различия CRLF/LF и лишние пробелы
@@ -439,4 +528,3 @@ if __name__ == "__main__":
     # 3) если обновления не было или не удалось -- просто запускаем сервер
     print("[XP420B] Запуск Flask-сервера на 127.0.0.1:9123")
     app.run(host="127.0.0.1", port=9123)
-
