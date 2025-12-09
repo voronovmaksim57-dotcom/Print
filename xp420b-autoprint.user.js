@@ -7,7 +7,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @connect      127.0.0.1
-// @version      1.0.0
+// @version      1.0.1
 // @downloadURL  https://github.com/voronovmaksim57-dotcom/Print/raw/refs/heads/main/xp420b-autoprint.user.js
 // @updateURL    https://github.com/voronovmaksim57-dotcom/Print/raw/refs/heads/main/xp420b-autoprint.user.js
 // ==/UserScript==
