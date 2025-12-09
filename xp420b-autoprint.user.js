@@ -8,8 +8,8 @@
 // @grant        GM_setValue
 // @connect      127.0.0.1
 // @version      1.0.0
-// @downloadURL  https://raw.githubusercontent.com/USERNAME/REPO/BRANCH/path/xp420b-autoprint.user.js
-// @updateURL    https://raw.githubusercontent.com/USERNAME/REPO/BRANCH/path/xp420b-autoprint.user.js
+// @downloadURL  https://github.com/voronovmaksim57-dotcom/Print/raw/refs/heads/main/xp420b-autoprint.user.js
+// @updateURL    https://github.com/voronovmaksim57-dotcom/Print/raw/refs/heads/main/xp420b-autoprint.user.js
 // ==/UserScript==
 
 (function () {
