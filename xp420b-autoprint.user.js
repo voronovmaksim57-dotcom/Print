@@ -6,8 +6,9 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_addValueChangeListener
 // @connect      127.0.0.1
-// @version      1.0.1
+// @version      1.0.2
 // @downloadURL  https://github.com/voronovmaksim57-dotcom/Print/raw/refs/heads/main/xp420b-autoprint.user.js
 // @updateURL    https://github.com/voronovmaksim57-dotcom/Print/raw/refs/heads/main/xp420b-autoprint.user.js
 // ==/UserScript==
@@ -31,11 +32,23 @@
   let lastPrinted = GM_getValue(LAST_PRINTED_KEY, null);
 
   console.log(
-    '[XP420B] Loaded handled entries =',
-    handled.length,
-    'lastPrinted =',
-    lastPrinted
+      '[XP420B] Loaded handled entries =',
+      handled.length,
+      'lastPrinted =',
+      lastPrinted
   );
+
+  // ====== синхронизация между вкладками ======
+
+  GM_addValueChangeListener(STORAGE_KEY, (name, oldValue, newValue, remote) => {
+      if (!remote) return;
+      handled = JSON.parse(newValue || '[]');
+  });
+
+  GM_addValueChangeListener(LAST_PRINTED_KEY, (name, oldValue, newValue, remote) => {
+      if (!remote) return;
+      lastPrinted = newValue;
+  });
 
   // ===== UI: маленький индикатор очистки в углу =====
 
