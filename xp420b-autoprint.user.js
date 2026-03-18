@@ -8,7 +8,7 @@
 // @grant        GM_setValue
 // @grant        GM_addValueChangeListener
 // @connect      127.0.0.1
-// @version      1.0.2
+// @version      1.0.3
 // @downloadURL  https://github.com/voronovmaksim57-dotcom/Print/raw/refs/heads/main/xp420b-autoprint.user.js
 // @updateURL    https://github.com/voronovmaksim57-dotcom/Print/raw/refs/heads/main/xp420b-autoprint.user.js
 // ==/UserScript==
@@ -17,7 +17,7 @@
   'use strict';
 
   const SHELF_CLASS = '_shelfTag_1tkm1_2';
-  const TIME_CLASS = '_time_wm2uu_27';
+  const TIME_CLASS_HINT = '_time_';
   const CODE_RE = /^\d+-\d+$/;
 
   const STORAGE_KEY = 'xp420b_handledCodeTimes_v2';
@@ -145,16 +145,47 @@
     return CODE_RE.test(text) ? text : null;
   }
 
-  function findTimeTextForShelf(el) {
-    let node = el;
-    for (let i = 0; i < 10 && node; i += 1) {
-      const t = node.querySelector ? node.querySelector('.' + TIME_CLASS) : null;
-      if (t && t.textContent) return t.textContent.trim();
-      node = node.parentElement;
+  function looksLikeTime(text) {
+  if (!text) return false;
+  const t = text.trim();
+
+  // 12:34, 9:05, 12:34:56
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(t)) return true;
+
+  // 12 мин, 3 ч, 1 час назад и т.п. — если у тебя на странице бывают такие форматы
+  if (/\d+\s*(мин|ч|час|часа|часов)/i.test(t)) return true;
+
+  return false;
+}
+
+function findTimeTextForShelf(el) {
+  let node = el;
+
+  for (let i = 0; i < 12 && node; i += 1) {
+    if (node.querySelectorAll) {
+      const candidates = Array.from(node.querySelectorAll('*'));
+
+      for (const c of candidates) {
+        const text = c.textContent?.trim();
+        const className = typeof c.className === 'string' ? c.className : '';
+
+        // 1) частичное совпадение по классу
+        if (className.includes(TIME_CLASS_HINT) && text) {
+          return text;
+        }
+
+        // 2) просто похоже на время
+        if (looksLikeTime(text)) {
+          return text;
+        }
+      }
     }
-    return null;
+
+    node = node.parentElement;
   }
 
+  return null;
+}
   function sendToPrinter(code) {
     console.log('[XP420B] Print request for', code);
     GM_xmlhttpRequest({
@@ -169,40 +200,40 @@
     });
   }
 
-  function handleShelfElement(el) {
-    const code = extractCode(el);
-    if (!code) return;
+  function handleShelfElement(el, retry = 0) {
+  const code = extractCode(el);
+  if (!code) return;
 
-    const timeText = findTimeTextForShelf(el);
-    if (!timeText) {
+  const timeText = findTimeTextForShelf(el);
+
+  if (!timeText) {
+    if (retry < 5) {
+      setTimeout(() => handleShelfElement(el, retry + 1), 300);
+    } else {
       console.log('[XP420B] No time found for', code);
-      return;
     }
-
-    const key = code + '||' + timeText;
-
-    // 1) уже печатали/обрабатывали такую пару код+время
-    if (wasHandled(key)) {
-      console.log('[XP420B] Already handled', key);
-      return;
-    }
-
-    // 2) подрядный дубль (22-2 -> 22-2)
-    if (lastPrinted === code) {
-      console.log('[XP420B] Skip consecutive duplicate', code);
-      // ⚠️ ТУТ ФИКС: тоже помечаем как обработанный,
-      // чтобы при переходе страница не напечатала этот дубль
-      markHandled(key);
-      return;
-    }
-
-    // 3) печатаем
-    sendToPrinter(code);
-    markHandled(key);
-    saveLastPrinted(code);
-
-    console.log('[XP420B] Printed and set lastPrinted =', code);
+    return;
   }
+
+  const key = code + '||' + timeText;
+
+  if (wasHandled(key)) {
+    console.log('[XP420B] Already handled', key);
+    return;
+  }
+
+  if (lastPrinted === code) {
+    console.log('[XP420B] Skip consecutive duplicate', code);
+    markHandled(key);
+    return;
+  }
+
+  sendToPrinter(code);
+  markHandled(key);
+  saveLastPrinted(code);
+
+  console.log('[XP420B] Printed and set lastPrinted =', code);
+}
 
   function processShelfTags(nodes) {
     nodes.forEach(handleShelfElement);
